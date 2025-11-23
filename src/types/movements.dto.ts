@@ -28,8 +28,9 @@ export interface MovimentacaoUI {
 export interface MovementCreateDto {
   productId: string;
   quantity: number;
-  type: MovementTypeApi;
-  observation?: string;
+  movementType: MovementTypeApi;
+  note?: string;
+  userId?: number;
 }
 
 

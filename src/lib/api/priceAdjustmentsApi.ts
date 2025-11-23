@@ -27,7 +27,7 @@ export async function applyPriceAdjustment(payload: ApplyPriceAdjustmentDTO): Pr
 }
 
 export async function getGlobalPercent(): Promise<number> {
-  const response = await api.get<number>('/global-percent');
+  const response = await api.get<number>('/prices/global-percent');
   return response.data;
 }
 

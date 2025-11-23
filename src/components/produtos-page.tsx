@@ -49,7 +49,7 @@ import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
 import { toast } from 'sonner';
 import {
-  getProducts,
+  fetchProductList,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -88,7 +88,7 @@ export function ProdutosPage() {
     try {
       setIsLoading(true);
 
-      const produtosDto = await getProducts();
+      const produtosDto = await fetchProductList();
       setProdutos(produtosDto);
 
       const categoriasDto = await getCategories();

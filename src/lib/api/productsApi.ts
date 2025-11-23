@@ -1,7 +1,7 @@
 import api from '../api';
 import type { ProductRequestDTO, ProductResponseDTO } from '../../types/products.dto';
 
-export async function getProducts(): Promise<ProductResponseDTO[]> {
+export async function fetchProductList(): Promise<ProductResponseDTO[]> {
   const response = await api.get<ProductResponseDTO[]>('/products');
   return response.data;
 }

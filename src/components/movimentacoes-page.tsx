@@ -1,13 +1,9 @@
 import { useState, useEffect } from 'react';
-//import type { Movimentacao, Produto, TipoMovimentacao } from '../types';
-//import { getMovimentacoes, saveMovimentacoes, getProdutos, saveProdutos } from '../lib/storage';
-
-import type { MovimentacaoUI, MovementFormData  } from '../types/movements.dto';
-import type { Produto, TipoMovimentacao } from '../types';
-import { getProdutos, saveProdutos } from '../lib/storage';
-import { fetchAllMovements, createMovement  } from '../lib/api/movementsApi';
+import type { MovimentacaoUI, MovementFormData, TipoMovimentacao } from '../types/movements.dto';
+import type { ProductResponseDTO } from '../types/products.dto';
+import { fetchAllMovements, createMovement } from '../lib/api/movementsApi';
 import { mapMovementApiToUi } from '../lib/mappers/movementMapper';
-
+import { fetchProductList } from '../lib/api/productsApi';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -19,16 +15,17 @@ import { Plus, ArrowUpCircle, ArrowDownCircle, AlertTriangle } from 'lucide-reac
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from './ui/alert';
-
+import { useUser } from '../context/UserContext';
 export function MovimentacoesPage() {
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoUI[]>([]);
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [produtos, setProdutos] = useState<ProductResponseDTO[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [filterTipo, setFilterTipo] = useState('all');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
+  const { userId } = useUser();
+  console.log("ID do usuário:", userId);
 
   const [formData, setFormData] = useState<MovementFormData>({
     produtoId: '',
@@ -45,15 +42,17 @@ export function MovimentacoesPage() {
     try {
       setIsLoading(true);
       setLoadError(null);
-      
-    const apiMovements = await fetchAllMovements();
-    console.log('apiMovements:', apiMovements); // ajuda a debugar formato
 
-    if (!Array.isArray(apiMovements)) {
-      console.error('Movimentações não vieram como array:', apiMovements);
-      setLoadError('Formato de dados de movimentações inválido.');
-      return;
-    }
+      const [apiMovements, apiProducts] = await Promise.all([
+        fetchAllMovements(),
+        fetchProductList(),
+      ]);
+
+      if (!Array.isArray(apiMovements)) {
+        console.error('Movimentações não vieram como array:', apiMovements);
+        setLoadError('Formato de dados de movimentações inválido.');
+        return;
+      }
 
       const uiMovements = apiMovements
         .map(mapMovementApiToUi)
@@ -63,9 +62,10 @@ export function MovimentacoesPage() {
         );
 
       setMovimentacoes(uiMovements);
+      setProdutos(apiProducts);
     } catch (error) {
-      console.error('Erro ao carregar movimentações:', error);
-      setLoadError('Não foi possível carregar as movimentações. Tente novamente mais tarde.');
+      console.error('Erro ao carregar dados:', error);
+      setLoadError('Não foi possível carregar as dados. Tente novamente mais tarde.');
       toast.error('Erro ao carregar movimentações de estoque.');
     } finally {
       setIsLoading(false);
@@ -110,7 +110,7 @@ export function MovimentacoesPage() {
       return;
     }
 
-    const produto = produtos.find(p => p.id === formData.produtoId);
+    const produto = produtos.find(p => p.id.toString() === formData.produtoId);
 
     if (!produto) {
       toast.error('Produto não encontrado');
@@ -118,7 +118,7 @@ export function MovimentacoesPage() {
     }
 
     // Validar estoque para saída (ainda usando estoque local enquanto produto não vem da API)
-    if (formData.tipo === 'Saída' && produto.quantidadeEstoque < quantidade) {
+    if (formData.tipo === 'Saída' && produto.stockQty < quantidade) {
       toast.error('Quantidade insuficiente em estoque');
       return;
     }
@@ -126,12 +126,12 @@ export function MovimentacoesPage() {
     try {
       setIsSaving(true);
 
-      // Chama a API para registrar a movimentação
       const movementCreatedApi = await createMovement({
         productId: formData.produtoId,
         quantity: quantidade,
-        type: formData.tipo === 'Entrada' ? 'ENTRADA' : 'SAIDA',
-        observation: formData.observacao || undefined,
+        movementType: formData.tipo === 'Entrada' ? 'ENTRADA' : 'SAIDA',
+        note: formData.observacao || undefined,
+        userId: Number(userId) || undefined,
       });
 
       const movementCreatedUi = mapMovementApiToUi(movementCreatedApi);
@@ -139,22 +139,22 @@ export function MovimentacoesPage() {
       // Atualizar estoque do produto LOCALMENTE (até migrar produtos para API)
       const novoEstoque =
         formData.tipo === 'Entrada'
-          ? produto.quantidadeEstoque + quantidade
-          : produto.quantidadeEstoque - quantidade;
+          ? produto.stockQty + quantidade
+          : produto.stockQty - quantidade;
 
       const produtosAtualizados = produtos.map(p =>
-        p.id === formData.produtoId
-          ? { ...p, quantidadeEstoque: novoEstoque }
+        p.id.toString() === formData.produtoId
+          ? { ...p, stockQty: novoEstoque }
           : p,
       );
 
       // Verificar alertas de estoque
-      if (novoEstoque < produto.quantidadeMinima) {
-        toast.warning(`Atenção: Estoque de "${produto.nome}" abaixo do mínimo!`, {
+      if (novoEstoque < produto.minQty) {
+        toast.warning(`Atenção: Estoque de "${produto.name}" abaixo do mínimo!`, {
           duration: 5000,
         });
-      } else if (novoEstoque > produto.quantidadeMaxima) {
-        toast.warning(`Atenção: Estoque de "${produto.nome}" acima do máximo!`, {
+      } else if (novoEstoque > produto.maxQty) {
+        toast.warning(`Atenção: Estoque de "${produto.name}" acima do máximo!`, {
           duration: 5000,
         });
       }
@@ -162,7 +162,6 @@ export function MovimentacoesPage() {
       // Atualizar estado local com a nova movimentação (já vinda da API)
       setMovimentacoes(prev => [movementCreatedUi, ...prev]);
       setProdutos(produtosAtualizados);
-      saveProdutos(produtosAtualizados);
 
       toast.success('Movimentação registrada com sucesso!');
       setIsDialogOpen(false);
@@ -274,7 +273,7 @@ export function MovimentacoesPage() {
         </Table>
       </div>
 
-    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Nova Movimentação</DialogTitle>
@@ -304,7 +303,7 @@ export function MovimentacoesPage() {
               <Label htmlFor="produto">Produto *</Label>
               <Select
                 value={formData.produtoId}
-                onValueChange={(value: any) =>
+                onValueChange={(value: string) =>
                   setFormData(prev => ({ ...prev, produtoId: value }))
                 }
               >
@@ -313,8 +312,8 @@ export function MovimentacoesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {produtos.map(produto => (
-                    <SelectItem key={produto.id} value={produto.id}>
-                      {produto.nome} (Estoque: {produto.quantidadeEstoque})
+                    <SelectItem key={produto.id} value={produto.id.toString()}>
+                      {produto.name} (Estoque: {produto.stockQty})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -325,7 +324,7 @@ export function MovimentacoesPage() {
                 <AlertTriangle className="size-4" />
                 <AlertDescription>
                   Estoque atual:{' '}
-                  {produtos.find(p => p.id === formData.produtoId)?.quantidadeEstoque || 0}{' '}
+                  {produtos.find(p => p.id.toString() === formData.produtoId)?.stockQty || 0}{' '}
                   unidades
                 </AlertDescription>
               </Alert>
