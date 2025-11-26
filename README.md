@@ -16,6 +16,10 @@ Este repositório contém o **front-end** do sistema de controle de estoque dese
 O projeto tem como objetivo gerenciar produtos, categorias e movimentações de estoque em uma **livraria**, oferecendo uma interface moderna e intuitiva.
 
 ---
+##  Backend
+- [BiblioStock-API](https://github.com/GreyPompom/BiblioStock-API/)
+
+---
 
 ## ✨ Funcionalidades Principais
 
